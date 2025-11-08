@@ -37,7 +37,7 @@
   <p id="status">Noch keine Verbindung.</p>
 
   <script>
-    const ws = new WebSocket("ws://localhost:8080");
+    const ws = new WebSocket("https://gsmr-funk.onrender.com");
     let pc, localStream, role, isMuted = false;
     const room = "GSMR"; // Fester Raumname
 
@@ -122,3 +122,4 @@
   </script>
 </body>
 </html>
+
