@@ -64,7 +64,7 @@
   // --- Push-to-Talk (WebRTC) ---
   let pc, localStream;
   const room = "GSMR"; // fester Raum
-  const ws = new WebSocket("ws://localhost:8080"); // hier Server-URL anpassen
+  const ws = new WebSocket("wss://gsmr-render.onrender.com");
 
   async function startConnection() {
     pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
@@ -130,3 +130,4 @@
 </script>
 </body>
 </html>
+
