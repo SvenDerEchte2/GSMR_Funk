@@ -69,6 +69,10 @@
   // --- Audio for PTT click ---
   const talkSound = new Audio("Funken.wav");
 
+  // --- Channel lock ---
+  let channelBusy = false;
+  const myId = Math.random().toString(36).substring(2,9); // simple session ID
+
   // --- Hilfsfunktion: Neuverhandlung (Renegotiation) ---
   async function renegotiate() {
     if (!pc) return;
@@ -91,9 +95,6 @@
       if (e.candidate) ws.send(JSON.stringify({ type: "signal", room, payload: { candidate: e.candidate } }));
     };
 
-    pc.onconnectionstatechange = () => console.log("🔗 Connection:", pc.connectionState);
-    pc.oniceconnectionstatechange = () => console.log("❄️ ICE:", pc.iceConnectionState);
-
     ws.onmessage = async (event) => {
       const msg = JSON.parse(event.data);
       console.log("📩 WS:", msg);
@@ -102,6 +103,7 @@
         await renegotiate();
       }
 
+      // handle signaling
       if (msg.type === "signal") {
         const { sdp, candidate } = msg.payload;
         if (sdp) {
@@ -119,14 +121,25 @@
           }
         }
       }
+
+      // handle lock updates
+      if (msg.type === "lock") {
+        channelBusy = true;
+        if (msg.from !== myId) {
+          console.log("🔒 Channel busy (by " + msg.from + ")");
+        }
+      }
+
+      if (msg.type === "unlock") {
+        channelBusy = false;
+        console.log("🔓 Channel free");
+      }
     };
 
     ws.onopen = () => {
       console.log("🌐 WebSocket verbunden");
       ws.send(JSON.stringify({ type: "join", room }));
     };
-
-    ws.onerror = (e) => console.error("⚠️ WebSocket-Fehler:", e);
 
     // Audio vorbereiten
     localStream = await navigator.mediaDevices.getUserMedia({
@@ -141,40 +154,41 @@
   // --- Push-to-Talk ---
   const btnAction = document.getElementById('btn-action');
 
-  btnAction.addEventListener('mousedown', async () => {
+  async function startTalking() {
+    if (channelBusy) {
+      console.log("🚫 Channel busy – cannot talk.");
+      return;
+    }
+
+    // Lock the channel
+    ws.send(JSON.stringify({ type: "lock", room, from: myId }));
+    channelBusy = true;
+
     // play click/funken sound locally
     talkSound.currentTime = 0;
     talkSound.play().catch(()=>{});
-    
+
     console.log("🎙️ Sprechen...");
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     await renegotiate();
-  });
+  }
 
-  btnAction.addEventListener('mouseup', async () => {
+  async function stopTalking() {
+    // unlock
+    ws.send(JSON.stringify({ type: "unlock", room, from: myId }));
+    channelBusy = false;
+
     console.log("🔇 Stumm...");
     pc.getSenders().forEach(sender => {
       if (sender.track && sender.track.kind === 'audio') pc.removeTrack(sender);
     });
     await renegotiate();
-  });
+  }
 
-  // Touch-Unterstützung
-  btnAction.addEventListener('touchstart', async (e) => {
-    e.preventDefault();
-    talkSound.currentTime = 0;
-    talkSound.play().catch(()=>{});
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-    await renegotiate();
-  });
-
-  btnAction.addEventListener('touchend', async (e) => {
-    e.preventDefault();
-    pc.getSenders().forEach(sender => {
-      if (sender.track && sender.track.kind === 'audio') pc.removeTrack(sender);
-    });
-    await renegotiate();
-  });
+  btnAction.addEventListener('mousedown', startTalking);
+  btnAction.addEventListener('mouseup', stopTalking);
+  btnAction.addEventListener('touchstart', (e) => { e.preventDefault(); startTalking(); });
+  btnAction.addEventListener('touchend', (e) => { e.preventDefault(); stopTalking(); });
 </script>
 </body>
 </html>
