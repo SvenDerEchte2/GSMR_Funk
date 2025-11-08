@@ -64,7 +64,7 @@
   // --- WebRTC / PTT Variablen ---
   let pc, localStream;
   const room = "GSMR";
-  const ws = new WebSocket("https://gsmr-funk.onrender.com");
+  const ws = new WebSocket("wss://gsmr-funk.onrender.com");
 
   // --- Hilfsfunktion: Neuverhandlung (Renegotiation) ---
   async function renegotiate() {
