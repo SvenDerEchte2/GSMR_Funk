@@ -1,9 +1,9 @@
-// Minimaler WebSocket-Signalisierungsserver mit Push-to-Talk Lock
+// Stable WebSocket signaling + push-to-talk lock server
 const WebSocket = require("ws");
 const wss = new WebSocket.Server({ port: 8080 });
 
 const rooms = {};
-const roomLocks = {}; // -> Speichert, wer gerade spricht (room -> client ws)
+const roomLocks = {}; // room -> { ws, id }
 
 wss.on("connection", (ws) => {
   ws.on("message", (msg) => {
@@ -11,84 +11,91 @@ wss.on("connection", (ws) => {
     try {
       data = JSON.parse(msg);
     } catch (err) {
-      console.error("❌ Ungültige Nachricht:", msg);
+      console.error("❌ Invalid JSON:", msg);
       return;
     }
 
     const { type, room, payload, from } = data;
 
-    // --- Raum beitreten ---
+    // --- Join room ---
     if (type === "join") {
       if (!rooms[room]) rooms[room] = [];
       rooms[room].push(ws);
-      console.log(`👤 Client joined room ${room} (${rooms[room].length})`);
+      ws.room = room;
+      ws.id = from;
+      console.log(`👤 ${from} joined room ${room}`);
 
-      // Wenn 2 Clients da sind, senden "ready"
+      // Notify both sides when 2+ clients exist
       if (rooms[room].length >= 2) {
-        rooms[room].forEach((c) => c.send(JSON.stringify({ type: "ready" })));
+        broadcast(room, { type: "ready" });
+      }
+
+      // Tell new user if room currently locked
+      if (roomLocks[room]) {
+        ws.send(JSON.stringify({
+          type: "lock_granted",
+          holder: roomLocks[room].id
+        }));
       }
       return;
     }
 
-    // --- WebRTC Signal weiterleiten ---
+    // --- WebRTC signaling ---
     if (type === "signal") {
-      rooms[room]?.forEach((c) => {
-        if (c !== ws) c.send(JSON.stringify({ type: "signal", payload }));
-      });
+      broadcast(room, { type: "signal", payload }, ws);
       return;
     }
 
-    // --- Push-to-Talk: Lock ---
-    if (type === "lock") {
-      // Falls der Raum schon belegt ist, sende Ablehnung zurück
-      if (roomLocks[room] && roomLocks[room] !== ws) {
-        ws.send(JSON.stringify({ type: "busy", room }));
-        console.log(`🚫 ${from} wollte sprechen, aber ${room} ist belegt`);
-        return;
+    // --- Request to speak ---
+    if (type === "request_lock") {
+      if (!roomLocks[room]) {
+        roomLocks[room] = { ws, id: from };
+        console.log(`🔒 Lock granted to ${from} in ${room}`);
+        broadcast(room, { type: "lock_granted", holder: from });
+      } else if (roomLocks[room].id !== from) {
+        ws.send(JSON.stringify({
+          type: "busy",
+          holder: roomLocks[room].id
+        }));
+        console.log(`🚫 ${from} tried to talk, busy by ${roomLocks[room].id}`);
       }
-
-      // Sonst Lock setzen
-      roomLocks[room] = ws;
-      console.log(`🔒 Raum ${room} gesperrt durch ${from}`);
-
-      // Allen anderen mitteilen
-      rooms[room]?.forEach((c) => {
-        if (c !== ws) c.send(JSON.stringify({ type: "lock", from }));
-      });
       return;
     }
 
-    // --- Push-to-Talk: Unlock ---
-    if (type === "unlock") {
-      if (roomLocks[room] === ws) {
+    // --- Release lock ---
+    if (type === "release_lock") {
+      if (roomLocks[room] && roomLocks[room].id === from) {
         delete roomLocks[room];
-        console.log(`🔓 Raum ${room} wieder frei (von ${from})`);
-
-        // Allen mitteilen, dass wieder frei ist
-        rooms[room]?.forEach((c) => {
-          if (c !== ws) c.send(JSON.stringify({ type: "unlock", from }));
-        });
+        console.log(`🔓 Lock released by ${from}`);
+        broadcast(room, { type: "unlock", holder: from });
       }
       return;
     }
   });
 
   ws.on("close", () => {
-    for (const r in rooms) {
-      rooms[r] = rooms[r].filter((c) => c !== ws);
-      if (rooms[r].length === 0) delete rooms[r];
+    const room = ws.room;
+    if (room && rooms[room]) {
+      rooms[room] = rooms[room].filter((c) => c !== ws);
+      if (rooms[room].length === 0) delete rooms[room];
     }
 
-    // Falls jemand die Verbindung verliert, Lock freigeben
-    for (const r in roomLocks) {
-      if (roomLocks[r] === ws) {
-        delete roomLocks[r];
-        rooms[r]?.forEach((c) =>
-          c.send(JSON.stringify({ type: "unlock", from: "disconnect" }))
-        );
-      }
+    // Free lock if disconnected user was the holder
+    if (room && roomLocks[room] && roomLocks[room].ws === ws) {
+      delete roomLocks[room];
+      broadcast(room, { type: "unlock", holder: "disconnect" });
     }
   });
 });
 
-console.log("✅ Signaling server läuft auf ws://localhost:8080");
+// Helper
+function broadcast(room, data, exclude) {
+  if (!rooms[room]) return;
+  for (const c of rooms[room]) {
+    if (c.readyState === 1 && c !== exclude) {
+      c.send(JSON.stringify(data));
+    }
+  }
+}
+
+console.log("✅ Stable signaling server on ws://localhost:8080");
