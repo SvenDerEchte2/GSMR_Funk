@@ -42,14 +42,12 @@ else document.body.innerHTML = '<p style="color:white">Kein Bild angegeben.</p>'
 document.getElementById('btn-close').addEventListener('click', () => window.close());
 
 // --- WebRTC / PTT ---
-let pc, localStream;
+let pc, localStream, filteredStream;
 const room = "GSMR";
 const myId = Math.random().toString(36).substring(2,9);
 const ws = new WebSocket("wss://gsmr-funk.onrender.com");
 
-const talkSound = new Audio("Funken.wav");
-const busySound = new Audio("Beep.wav");
-
+const talkSound = new Audio("Funken.wav"); // optional, falls du trotzdem Sound beim Drücken willst
 let channelBusy = false;
 
 // --- WebRTC helper ---
@@ -64,6 +62,7 @@ async function renegotiate() {
 async function startConnection() {
   pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
 
+  // Remote Audio
   const remoteAudio = document.createElement("audio");
   remoteAudio.autoplay = true;
   pc.ontrack = e => remoteAudio.srcObject = e.streams[0];
@@ -75,8 +74,6 @@ async function startConnection() {
 
   ws.onmessage = async (event) => {
     const msg = JSON.parse(event.data);
-    console.log("📩 WS:", msg);
-
     if (msg.type === "ready") await renegotiate();
 
     if (msg.type === "signal") {
@@ -89,38 +86,54 @@ async function startConnection() {
           ws.send(JSON.stringify({ type: "signal", room, payload: { sdp: answer } }));
         }
       } else if (candidate) {
-        try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } 
-        catch(e){ console.error(e); }
+        try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch(e){ console.error(e); }
       }
     }
 
-    // --- Handle server lock messages ---
-    if (msg.type === "lock_granted") {
-      channelBusy = true;
-      console.log("🎙️ Channel locked by", msg.holder);
-    }
-
-    if (msg.type === "unlock") {
-      channelBusy = false;
-      console.log("🔓 Channel free");
-    }
-
-    if (msg.type === "busy") {
-      console.log("🚫 Busy, held by", msg.holder);
-      busySound.currentTime = 0;
-      busySound.play().catch(()=>{});
-    }
+    if (msg.type === "lock_granted") channelBusy = true;
+    if (msg.type === "unlock") channelBusy = false;
   };
 
-  ws.onopen = () => {
-    console.log("🌐 WebSocket verbunden");
-    ws.send(JSON.stringify({ type: "join", room, from: myId }));
-  };
+  ws.onopen = () => ws.send(JSON.stringify({ type: "join", room, from: myId }));
 
+  // --- Mikrofon abrufen ---
   localStream = await navigator.mediaDevices.getUserMedia({
     audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true }
   });
-  console.log("🎤 Mikrofon bereit.");
+
+  // --- Funkfilter / Rauschen ---
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = audioCtx.createMediaStreamSource(localStream);
+
+  // Bandpass Filter
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.value = 3000;
+  filter.Q.value = 1;
+
+  // Leises Rauschen
+  const noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 1, audioCtx.sampleRate);
+  const noiseData = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < noiseData.length; i++) noiseData[i] = (Math.random() * 2 - 1) * 0.02;
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = noiseBuffer;
+  noise.loop = true;
+
+  const noiseGain = audioCtx.createGain();
+  noiseGain.gain.value = 1.0;
+
+  // Verbindung
+  source.connect(filter);
+  noise.connect(noiseGain);
+  noiseGain.connect(filter);
+
+  const destination = audioCtx.createMediaStreamDestination();
+  filter.connect(destination);
+  filteredStream = destination.stream;
+
+  noise.start();
+
+  console.log("🎤 Mikrofon + Funkfilter bereit.");
 }
 
 startConnection();
@@ -129,19 +142,14 @@ startConnection();
 const btnAction = document.getElementById('btn-action');
 
 async function startTalking() {
-  if (channelBusy) {
-    console.log("🚫 Cannot talk, channel busy");
-    busySound.currentTime = 0;
-    busySound.play().catch(()=>{});
-    return;
-  }
-
+  if (channelBusy) return;
   ws.send(JSON.stringify({ type: "request_lock", room, from: myId }));
-  
+
+  // optional: Sound beim Drücken
   talkSound.currentTime = 0;
   talkSound.play().catch(()=>{});
 
-  localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  filteredStream.getTracks().forEach(track => pc.addTrack(track, filteredStream));
   await renegotiate();
 }
 
