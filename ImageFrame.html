@@ -47,7 +47,7 @@
   <div class="image-container">
     <img id="displayImage" alt="Bild">
     <button class="overlay-btn" id="btn-close">✕</button>
-    <button class="overlay-btn" id="btn-action">X</button>
+    <button class="overlay-btn" id="btn-action">🎙️</button>
   </div>
 
 <script>
@@ -61,11 +61,20 @@
   // --- Button schließen ---
   document.getElementById('btn-close').addEventListener('click', () => window.close());
 
-  // --- Push-to-Talk (WebRTC) ---
+  // --- WebRTC / PTT Variablen ---
   let pc, localStream;
-  const room = "GSMR"; // fester Raum
+  const room = "GSMR";
   const ws = new WebSocket("wss://gsmr-render.onrender.com");
 
+  // --- Hilfsfunktion: Neuverhandlung (Renegotiation) ---
+  async function renegotiate() {
+    if (!pc) return;
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    ws.send(JSON.stringify({ type: "signal", room, payload: { sdp: offer } }));
+  }
+
+  // --- WebRTC-Start ---
   async function startConnection() {
     pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
 
@@ -76,37 +85,52 @@
     document.body.appendChild(remoteAudio);
 
     pc.onicecandidate = e => {
-      if(e.candidate) ws.send(JSON.stringify({ type: "signal", room, payload: { candidate: e.candidate } }));
+      if (e.candidate) ws.send(JSON.stringify({ type: "signal", room, payload: { candidate: e.candidate } }));
     };
+
+    pc.onconnectionstatechange = () => console.log("🔗 Connection:", pc.connectionState);
+    pc.oniceconnectionstatechange = () => console.log("❄️ ICE:", pc.iceConnectionState);
 
     ws.onmessage = async (event) => {
       const msg = JSON.parse(event.data);
-      if(msg.type === "ready") {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        ws.send(JSON.stringify({ type: "signal", room, payload: { sdp: offer } }));
+      console.log("📩 WS:", msg);
+
+      if (msg.type === "ready") {
+        await renegotiate();
       }
-      if(msg.type === "signal") {
+
+      if (msg.type === "signal") {
         const { sdp, candidate } = msg.payload;
-        if(sdp) {
+        if (sdp) {
           await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-          if(sdp.type === "offer") {
+          if (sdp.type === "offer") {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             ws.send(JSON.stringify({ type: "signal", room, payload: { sdp: answer } }));
           }
-        } else if(candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } else if (candidate) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (err) {
+            console.error("❌ ICE-Fehler:", err);
+          }
         }
       }
     };
 
-    ws.onopen = () => ws.send(JSON.stringify({ type: "join", room }));
+    ws.onopen = () => {
+      console.log("🌐 WebSocket verbunden");
+      ws.send(JSON.stringify({ type: "join", room }));
+    };
 
-    // Audio aufnehmen, aber NICHT automatisch senden
+    ws.onerror = (e) => console.error("⚠️ WebSocket-Fehler:", e);
+
+    // Audio vorbereiten
     localStream = await navigator.mediaDevices.getUserMedia({
       audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true }
     });
+
+    console.log("🎤 Mikrofon bereit.");
   }
 
   startConnection();
@@ -114,20 +138,34 @@
   // --- Push-to-Talk ---
   const btnAction = document.getElementById('btn-action');
 
-  btnAction.addEventListener('mousedown', () => {
+  btnAction.addEventListener('mousedown', async () => {
+    console.log("🎙️ Sprechen...");
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    await renegotiate();
   });
 
-  btnAction.addEventListener('mouseup', () => {
+  btnAction.addEventListener('mouseup', async () => {
+    console.log("🔇 Stumm...");
     pc.getSenders().forEach(sender => {
-      if(sender.track && sender.track.kind === 'audio') pc.removeTrack(sender);
+      if (sender.track && sender.track.kind === 'audio') pc.removeTrack(sender);
     });
+    await renegotiate();
   });
 
-  // Für Touch-Geräte
-  btnAction.addEventListener('touchstart', (e) => { e.preventDefault(); localStream.getTracks().forEach(track => pc.addTrack(track, localStream)); });
-  btnAction.addEventListener('touchend', (e) => { e.preventDefault(); pc.getSenders().forEach(sender => { if(sender.track && sender.track.kind==='audio') pc.removeTrack(sender); }); });
+  // Touch-Unterstützung
+  btnAction.addEventListener('touchstart', async (e) => {
+    e.preventDefault();
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    await renegotiate();
+  });
+
+  btnAction.addEventListener('touchend', async (e) => {
+    e.preventDefault();
+    pc.getSenders().forEach(sender => {
+      if (sender.track && sender.track.kind === 'audio') pc.removeTrack(sender);
+    });
+    await renegotiate();
+  });
 </script>
 </body>
 </html>
-
