@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dispatch Login Demo</title>
+<style>
+  body {
+    background-color: #0b1220;
+    color: #e6f8ff;
+    font-family: 'Inter', sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+  }
+  .panel {
+    background-color: #071027;
+    padding: 40px;
+    border-radius: 16px;
+    text-align: center;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  }
+  button {
+    padding: 16px 32px;
+    margin: 12px;
+    font-size: 18px;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: 0.2s;
+  }
+  .vehicle {
+    background-color: #2563eb;
+    color: white;
+  }
+  button:hover {
+    transform: scale(1.05);
+    opacity: 0.9;
+  }
+</style>
+</head>
+<body>
+  <div class="panel">
+    <h1>Dispatch Demo</h1>
+    <button class="vehicle" id="digitalfunkBtn">Digitalfunkhörer</button>
+  </div>
+
+  <script>
+    const btn = document.getElementById('digitalfunkBtn');
+    btn.addEventListener('click', () => {
+      const imgSrc = 'funkhoehrer.png';
+      const img = new Image();
+      img.src = imgSrc;
+      img.onload = () => {
+        const width = img.width;
+        const height = img.height;
+
+        // open the separate HTML file with exact image size
+        window.open(`ImageFrame.html?src=${encodeURIComponent(imgSrc)}`, '_blank',
+          `width=${width},height=${height},resizable=yes`);
+      };
+    });
+  </script>
+</body>
+</html>

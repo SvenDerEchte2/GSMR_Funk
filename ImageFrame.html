@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Image Frame + Push-to-Talk</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .image-container {
+    position: relative;
+    display: inline-block;
+  }
+
+  img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  .overlay-btn {
+    position: absolute;
+    background-color: rgba(37, 99, 235, 0.85);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: 0.2s;
+    user-select: none;
+  }
+  .overlay-btn:hover { background-color: rgba(59,130,246,1); transform: scale(1.05); }
+  #btn-close { top: 10px; right: 10px; }
+  #btn-action { bottom: 225px; left: 49px; }
+</style>
+</head>
+<body>
+  <div class="image-container">
+    <img id="displayImage" alt="Bild">
+    <button class="overlay-btn" id="btn-close">✕</button>
+    <button class="overlay-btn" id="btn-action">X</button>
+  </div>
+
+<script>
+  // --- Bild laden ---
+  const params = new URLSearchParams(window.location.search);
+  const src = params.get('src');
+  const img = document.getElementById('displayImage');
+  if (src) img.src = src;
+  else document.body.innerHTML = '<p style="color:white">Kein Bild angegeben.</p>';
+
+  // --- Button schließen ---
+  document.getElementById('btn-close').addEventListener('click', () => window.close());
+
+  // --- Push-to-Talk (WebRTC) ---
+  let pc, localStream;
+  const room = "GSMR"; // fester Raum
+  const ws = new WebSocket("ws://localhost:8080"); // hier Server-URL anpassen
+
+  async function startConnection() {
+    pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+
+    // Remote Audio
+    const remoteAudio = document.createElement("audio");
+    remoteAudio.autoplay = true;
+    pc.ontrack = e => remoteAudio.srcObject = e.streams[0];
+    document.body.appendChild(remoteAudio);
+
+    pc.onicecandidate = e => {
+      if(e.candidate) ws.send(JSON.stringify({ type: "signal", room, payload: { candidate: e.candidate } }));
+    };
+
+    ws.onmessage = async (event) => {
+      const msg = JSON.parse(event.data);
+      if(msg.type === "ready") {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        ws.send(JSON.stringify({ type: "signal", room, payload: { sdp: offer } }));
+      }
+      if(msg.type === "signal") {
+        const { sdp, candidate } = msg.payload;
+        if(sdp) {
+          await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+          if(sdp.type === "offer") {
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            ws.send(JSON.stringify({ type: "signal", room, payload: { sdp: answer } }));
+          }
+        } else if(candidate) {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        }
+      }
+    };
+
+    ws.onopen = () => ws.send(JSON.stringify({ type: "join", room }));
+
+    // Audio aufnehmen, aber NICHT automatisch senden
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true }
+    });
+  }
+
+  startConnection();
+
+  // --- Push-to-Talk ---
+  const btnAction = document.getElementById('btn-action');
+
+  btnAction.addEventListener('mousedown', () => {
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  });
+
+  btnAction.addEventListener('mouseup', () => {
+    pc.getSenders().forEach(sender => {
+      if(sender.track && sender.track.kind === 'audio') pc.removeTrack(sender);
+    });
+  });
+
+  // Für Touch-Geräte
+  btnAction.addEventListener('touchstart', (e) => { e.preventDefault(); localStream.getTracks().forEach(track => pc.addTrack(track, localStream)); });
+  btnAction.addEventListener('touchend', (e) => { e.preventDefault(); pc.getSenders().forEach(sender => { if(sender.track && sender.track.kind==='audio') pc.removeTrack(sender); }); });
+</script>
+</body>
+</html>
