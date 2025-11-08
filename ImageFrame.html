@@ -39,6 +39,7 @@
     user-select: none;
   }
   .overlay-btn:hover { background-color: rgba(59,130,246,1); transform: scale(1.05); }
+  .overlay-btn:disabled { background-color: rgba(100,100,100,0.5); cursor: not-allowed; transform: none; }
   #btn-close { top: 10px; right: 10px; }
   #btn-action { bottom: 225px; left: 49px; }
 </style>
@@ -61,12 +62,15 @@
   // --- Button schließen ---
   document.getElementById('btn-close').addEventListener('click', () => window.close());
 
-  // --- WebRTC / PTT Variablen ---
+  // --- Variablen ---
   let pc, localStream;
   const room = "GSMR";
-  const ws = new WebSocket("https://gsmr-funk.onrender.com");
+  const ws = new WebSocket("wss://gsmr-render.onrender.com");
+  const btnAction = document.getElementById('btn-action');
+  const talkSound = new Audio("Funken.wav");
+  let someoneTalking = false; // globaler Talk-Zustand
 
-  // --- Hilfsfunktion: Neuverhandlung (Renegotiation) ---
+  // --- Neuverhandlung ---
   async function renegotiate() {
     if (!pc) return;
     const offer = await pc.createOffer();
@@ -74,11 +78,10 @@
     ws.send(JSON.stringify({ type: "signal", room, payload: { sdp: offer } }));
   }
 
-  // --- WebRTC-Start ---
+  // --- Verbindung aufbauen ---
   async function startConnection() {
     pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
 
-    // Remote Audio
     const remoteAudio = document.createElement("audio");
     remoteAudio.autoplay = true;
     pc.ontrack = e => remoteAudio.srcObject = e.streams[0];
@@ -88,13 +91,11 @@
       if (e.candidate) ws.send(JSON.stringify({ type: "signal", room, payload: { candidate: e.candidate } }));
     };
 
-    pc.onconnectionstatechange = () => console.log("🔗 Connection:", pc.connectionState);
-    pc.oniceconnectionstatechange = () => console.log("❄️ ICE:", pc.iceConnectionState);
-
     ws.onmessage = async (event) => {
       const msg = JSON.parse(event.data);
       console.log("📩 WS:", msg);
 
+      // --- Signalisierung ---
       if (msg.type === "ready") {
         await renegotiate();
       }
@@ -109,12 +110,22 @@
             ws.send(JSON.stringify({ type: "signal", room, payload: { sdp: answer } }));
           }
         } else if (candidate) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate));
-          } catch (err) {
-            console.error("❌ ICE-Fehler:", err);
-          }
+          try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); }
+          catch (err) { console.error("❌ ICE:", err); }
         }
+      }
+
+      // --- Exklusives Sprechen ---
+      if (msg.type === "talk_start" && msg.room === room) {
+        someoneTalking = true;
+        btnAction.disabled = true;
+        btnAction.textContent = "🚫 besetzt";
+      }
+
+      if (msg.type === "talk_end" && msg.room === room) {
+        someoneTalking = false;
+        btnAction.disabled = false;
+        btnAction.textContent = "🎙️";
       }
     };
 
@@ -123,7 +134,7 @@
       ws.send(JSON.stringify({ type: "join", room }));
     };
 
-    ws.onerror = (e) => console.error("⚠️ WebSocket-Fehler:", e);
+    ws.onerror = (e) => console.error("⚠️ WS-Fehler:", e);
 
     // Audio vorbereiten
     localStream = await navigator.mediaDevices.getUserMedia({
@@ -136,38 +147,31 @@
   startConnection();
 
   // --- Push-to-Talk ---
-  const btnAction = document.getElementById('btn-action');
+  async function startTalking() {
+    if (someoneTalking) return; // blockieren, falls jemand anderes spricht
+    talkSound.currentTime = 0;
+    talkSound.play().catch(() => {}); // Sound beim Drücken
+    ws.send(JSON.stringify({ type: "talk_start", room }));
 
-  btnAction.addEventListener('mousedown', async () => {
-    console.log("🎙️ Sprechen...");
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     await renegotiate();
-  });
+  }
 
-  btnAction.addEventListener('mouseup', async () => {
-    console.log("🔇 Stumm...");
+  async function stopTalking() {
+    ws.send(JSON.stringify({ type: "talk_end", room }));
     pc.getSenders().forEach(sender => {
       if (sender.track && sender.track.kind === 'audio') pc.removeTrack(sender);
     });
     await renegotiate();
-  });
+  }
 
-  // Touch-Unterstützung
-  btnAction.addEventListener('touchstart', async (e) => {
-    e.preventDefault();
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-    await renegotiate();
-  });
+  // Maus
+  btnAction.addEventListener('mousedown', startTalking);
+  btnAction.addEventListener('mouseup', stopTalking);
 
-  btnAction.addEventListener('touchend', async (e) => {
-    e.preventDefault();
-    pc.getSenders().forEach(sender => {
-      if (sender.track && sender.track.kind === 'audio') pc.removeTrack(sender);
-    });
-    await renegotiate();
-  });
+  // Touch
+  btnAction.addEventListener('touchstart', (e) => { e.preventDefault(); startTalking(); });
+  btnAction.addEventListener('touchend', (e) => { e.preventDefault(); stopTalking(); });
 </script>
 </body>
 </html>
-
-
