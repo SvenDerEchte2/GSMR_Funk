@@ -5,27 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Image Frame + Push-to-Talk</title>
 <style>
-  html, body {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-    background: #000;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-  }
-
-  .image-container {
-    position: relative;
-    display: inline-block;
-  }
-
-  img {
-    display: block;
-    max-width: 100%;
-    height: auto;
-  }
-
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; display: flex; justify-content: center; align-items: center; }
+  .image-container { position: relative; display: inline-block; }
+  img { display: block; max-width: 100%; height: auto; }
   .overlay-btn {
     position: absolute;
     background-color: rgba(37, 99, 235, 0.85);
@@ -44,151 +26,138 @@
 </style>
 </head>
 <body>
-  <div class="image-container">
-    <img id="displayImage" alt="Bild">
-    <button class="overlay-btn" id="btn-close">✕</button>
-    <button class="overlay-btn" id="btn-action">🎙️</button>
-  </div>
+<div class="image-container">
+  <img id="displayImage" alt="Bild">
+  <button class="overlay-btn" id="btn-close">✕</button>
+  <button class="overlay-btn" id="btn-action">🎙️</button>
+</div>
 
 <script>
-  // --- Bild laden ---
-  const params = new URLSearchParams(window.location.search);
-  const src = params.get('src');
-  const img = document.getElementById('displayImage');
-  if (src) img.src = src;
-  else document.body.innerHTML = '<p style="color:white">Kein Bild angegeben.</p>';
+const params = new URLSearchParams(window.location.search);
+const src = params.get('src');
+const img = document.getElementById('displayImage');
+if (src) img.src = src;
+else document.body.innerHTML = '<p style="color:white">Kein Bild angegeben.</p>';
 
-  // --- Button schließen ---
-  document.getElementById('btn-close').addEventListener('click', () => window.close());
+document.getElementById('btn-close').addEventListener('click', () => window.close());
 
-  // --- WebRTC / PTT Variablen ---
-  let pc, localStream;
-  const room = "GSMR";
-  const ws = new WebSocket("wss://gsmr-funk.onrender.com");
+// --- WebRTC / PTT ---
+let pc, localStream;
+const room = "GSMR";
+const myId = Math.random().toString(36).substring(2,9);
+const ws = new WebSocket("wss://gsmr-funk.onrender.com");
 
-  // --- Audio for PTT click ---
-  const talkSound = new Audio("Funken.wav");
+const talkSound = new Audio("Funken.wav");
+const busySound = new Audio("Beep.wav");
 
-  // --- Channel lock ---
-  let channelBusy = false;
-  const myId = Math.random().toString(36).substring(2,9); // simple session ID
+let channelBusy = false;
 
-  // --- Hilfsfunktion: Neuverhandlung (Renegotiation) ---
-  async function renegotiate() {
-    if (!pc) return;
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    ws.send(JSON.stringify({ type: "signal", room, payload: { sdp: offer } }));
-  }
+// --- WebRTC helper ---
+async function renegotiate() {
+  if (!pc) return;
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  ws.send(JSON.stringify({ type: "signal", room, payload: { sdp: offer } }));
+}
 
-  // --- WebRTC-Start ---
-  async function startConnection() {
-    pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+// --- Start WebRTC connection ---
+async function startConnection() {
+  pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
 
-    // Remote Audio
-    const remoteAudio = document.createElement("audio");
-    remoteAudio.autoplay = true;
-    pc.ontrack = e => remoteAudio.srcObject = e.streams[0];
-    document.body.appendChild(remoteAudio);
+  const remoteAudio = document.createElement("audio");
+  remoteAudio.autoplay = true;
+  pc.ontrack = e => remoteAudio.srcObject = e.streams[0];
+  document.body.appendChild(remoteAudio);
 
-    pc.onicecandidate = e => {
-      if (e.candidate) ws.send(JSON.stringify({ type: "signal", room, payload: { candidate: e.candidate } }));
-    };
+  pc.onicecandidate = e => {
+    if (e.candidate) ws.send(JSON.stringify({ type: "signal", room, payload: { candidate: e.candidate } }));
+  };
 
-    ws.onmessage = async (event) => {
-      const msg = JSON.parse(event.data);
-      console.log("📩 WS:", msg);
+  ws.onmessage = async (event) => {
+    const msg = JSON.parse(event.data);
+    console.log("📩 WS:", msg);
 
-      if (msg.type === "ready") {
-        await renegotiate();
-      }
+    if (msg.type === "ready") await renegotiate();
 
-      // handle signaling
-      if (msg.type === "signal") {
-        const { sdp, candidate } = msg.payload;
-        if (sdp) {
-          await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-          if (sdp.type === "offer") {
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            ws.send(JSON.stringify({ type: "signal", room, payload: { sdp: answer } }));
-          }
-        } else if (candidate) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate));
-          } catch (err) {
-            console.error("❌ ICE-Fehler:", err);
-          }
+    if (msg.type === "signal") {
+      const { sdp, candidate } = msg.payload;
+      if (sdp) {
+        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        if (sdp.type === "offer") {
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          ws.send(JSON.stringify({ type: "signal", room, payload: { sdp: answer } }));
         }
+      } else if (candidate) {
+        try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } 
+        catch(e){ console.error(e); }
       }
-
-      // handle lock updates
-      if (msg.type === "lock") {
-        channelBusy = true;
-        if (msg.from !== myId) {
-          console.log("🔒 Channel busy (by " + msg.from + ")");
-        }
-      }
-
-      if (msg.type === "unlock") {
-        channelBusy = false;
-        console.log("🔓 Channel free");
-      }
-    };
-
-    ws.onopen = () => {
-      console.log("🌐 WebSocket verbunden");
-      ws.send(JSON.stringify({ type: "join", room }));
-    };
-
-    // Audio vorbereiten
-    localStream = await navigator.mediaDevices.getUserMedia({
-      audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true }
-    });
-
-    console.log("🎤 Mikrofon bereit.");
-  }
-
-  startConnection();
-
-  // --- Push-to-Talk ---
-  const btnAction = document.getElementById('btn-action');
-
-  async function startTalking() {
-    if (channelBusy) {
-      console.log("🚫 Channel busy – cannot talk.");
-      return;
     }
 
-    // Lock the channel
-    ws.send(JSON.stringify({ type: "lock", room, from: myId }));
-    channelBusy = true;
+    // --- Handle server lock messages ---
+    if (msg.type === "lock_granted") {
+      channelBusy = true;
+      console.log("🎙️ Channel locked by", msg.holder);
+    }
 
-    // play click/funken sound locally
-    talkSound.currentTime = 0;
-    talkSound.play().catch(()=>{});
+    if (msg.type === "unlock") {
+      channelBusy = false;
+      console.log("🔓 Channel free");
+    }
 
-    console.log("🎙️ Sprechen...");
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-    await renegotiate();
+    if (msg.type === "busy") {
+      console.log("🚫 Busy, held by", msg.holder);
+      busySound.currentTime = 0;
+      busySound.play().catch(()=>{});
+    }
+  };
+
+  ws.onopen = () => {
+    console.log("🌐 WebSocket verbunden");
+    ws.send(JSON.stringify({ type: "join", room, from: myId }));
+  };
+
+  localStream = await navigator.mediaDevices.getUserMedia({
+    audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true }
+  });
+  console.log("🎤 Mikrofon bereit.");
+}
+
+startConnection();
+
+// --- Push-to-Talk ---
+const btnAction = document.getElementById('btn-action');
+
+async function startTalking() {
+  if (channelBusy) {
+    console.log("🚫 Cannot talk, channel busy");
+    busySound.currentTime = 0;
+    busySound.play().catch(()=>{});
+    return;
   }
 
-  async function stopTalking() {
-    // unlock
-    ws.send(JSON.stringify({ type: "unlock", room, from: myId }));
-    channelBusy = false;
+  ws.send(JSON.stringify({ type: "request_lock", room, from: myId }));
+  
+  talkSound.currentTime = 0;
+  talkSound.play().catch(()=>{});
 
-    console.log("🔇 Stumm...");
-    pc.getSenders().forEach(sender => {
-      if (sender.track && sender.track.kind === 'audio') pc.removeTrack(sender);
-    });
-    await renegotiate();
-  }
+  localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  await renegotiate();
+}
 
-  btnAction.addEventListener('mousedown', startTalking);
-  btnAction.addEventListener('mouseup', stopTalking);
-  btnAction.addEventListener('touchstart', (e) => { e.preventDefault(); startTalking(); });
-  btnAction.addEventListener('touchend', (e) => { e.preventDefault(); stopTalking(); });
+async function stopTalking() {
+  ws.send(JSON.stringify({ type: "release_lock", room, from: myId }));
+
+  pc.getSenders().forEach(sender => {
+    if (sender.track && sender.track.kind === 'audio') pc.removeTrack(sender);
+  });
+  await renegotiate();
+}
+
+btnAction.addEventListener('mousedown', startTalking);
+btnAction.addEventListener('mouseup', stopTalking);
+btnAction.addEventListener('touchstart', (e) => { e.preventDefault(); startTalking(); });
+btnAction.addEventListener('touchend', (e) => { e.preventDefault(); stopTalking(); });
 </script>
 </body>
 </html>
