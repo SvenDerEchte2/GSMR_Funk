@@ -5,9 +5,48 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Image Frame + Push-to-Talk</title>
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; background: #000; display: flex; justify-content: center; align-items: center; }
-  .image-container { position: relative; display: inline-block; }
-  img { display: block; max-width: 100%; height: auto; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .image-container {
+    position: relative;
+    display: inline-block;
+  }
+
+  img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* === DISPLAY === */
+  #displayPanel {
+    position: absolute;
+    top: 227px;         /* Position anpassbar */
+    left: 50px;        /* Position anpassbar */
+    width: 110px;      /* Breite anpassbar */
+    height: 142px;      /* Höhe anpassbar */
+    background-color: lch(#585858);
+    color: #00ff66;
+    font-family: "Courier New", monospace;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #00ff6600;
+    border-radius: 6px;
+    box-shadow: 0 0 8px #00ff6600;
+    text-shadow: 0 0 5px #00ff66;
+  }
+
+  /* === BUTTONS === */
   .overlay-btn {
     position: absolute;
     background-color: rgba(37, 99, 235, 0.85);
@@ -20,7 +59,13 @@
     transition: 0.2s;
     user-select: none;
   }
-  .overlay-btn:hover { background-color: rgba(59,130,246,1); transform: scale(1.05); }
+
+  .overlay-btn:hover {
+    background-color: rgba(59,130,246,1);
+    transform: scale(1.05);
+  }
+
+  /* Tastenpositionen */
   #btn-action1 { bottom: 225px; left: 49px; }
   #btn-action2 { bottom: 225px; left: 88px; }
   #btn-action3 { bottom: 225px; left: 129px; }
@@ -37,17 +82,22 @@
 <body>
 <div class="image-container">
   <img id="displayImage" alt="Bild">
-    <button class="overlay-btn" id="btn-action1">X</button>
-    <button class="overlay-btn" id="btn-action2">X</button>
-    <button class="overlay-btn" id="btn-action3">X</button>
-    <button class="overlay-btn" id="btn-action4">X</button>
-    <button class="overlay-btn" id="btn-action5">X</button>
-    <button class="overlay-btn" id="btn-action6">X</button>
-    <button class="overlay-btn" id="btn-action7">X</button>
-    <button class="overlay-btn" id="btn-action8">X</button>
-    <button class="overlay-btn" id="btn-action9">X</button>
-    <button class="overlay-btn" id="btn-action0">X</button>
-    <button class="overlay-btn" id="btn-actionRuf">X</button>
+
+  <!-- FUNK DISPLAY -->
+  <div id="displayPanel">CH 1 – GSMR</div>
+
+  <!-- TASTEN -->
+  <button class="overlay-btn" id="btn-action1">X</button>
+  <button class="overlay-btn" id="btn-action2">X</button>
+  <button class="overlay-btn" id="btn-action3">X</button>
+  <button class="overlay-btn" id="btn-action4">X</button>
+  <button class="overlay-btn" id="btn-action5">X</button>
+  <button class="overlay-btn" id="btn-action6">X</button>
+  <button class="overlay-btn" id="btn-action7">X</button>
+  <button class="overlay-btn" id="btn-action8">X</button>
+  <button class="overlay-btn" id="btn-action9">X</button>
+  <button class="overlay-btn" id="btn-action0">X</button>
+  <button class="overlay-btn" id="btn-actionRuf">🎙️</button>
 </div>
 
 <script>
@@ -57,13 +107,19 @@ const img = document.getElementById('displayImage');
 if (src) img.src = src;
 else document.body.innerHTML = '<p style="color:white">Kein Bild angegeben.</p>';
 
+// --- DISPLAY FUNKTION ---
+const displayPanel = document.getElementById('displayPanel');
+function setDisplayText(text) {
+  displayPanel.textContent = text;
+}
+
 // --- WebRTC / PTT ---
 let pc, localStream, filteredStream;
 const room = "GSMR";
 const myId = Math.random().toString(36).substring(2,9);
 const ws = new WebSocket("wss://gsmr-funk.onrender.com");
 
-const talkSound = new Audio("Funken.wav"); // optional, falls du trotzdem Sound beim Drücken willst
+const talkSound = new Audio("Funken.wav");
 let channelBusy = false;
 
 // --- WebRTC helper ---
@@ -78,7 +134,6 @@ async function renegotiate() {
 async function startConnection() {
   pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
 
-  // Remote Audio
   const remoteAudio = document.createElement("audio");
   remoteAudio.autoplay = true;
   pc.ontrack = e => remoteAudio.srcObject = e.streams[0];
@@ -90,6 +145,7 @@ async function startConnection() {
 
   ws.onmessage = async (event) => {
     const msg = JSON.parse(event.data);
+
     if (msg.type === "ready") await renegotiate();
 
     if (msg.type === "signal") {
@@ -106,28 +162,32 @@ async function startConnection() {
       }
     }
 
-    if (msg.type === "lock_granted") channelBusy = true;
-    if (msg.type === "unlock") channelBusy = false;
+    // --- CHANNEL LOCKS ---
+    if (msg.type === "lock_granted") {
+      channelBusy = true;
+      setDisplayText("BUSY – GSMR");
+    }
+    if (msg.type === "unlock") {
+      channelBusy = false;
+      setDisplayText("FREE – CH 1");
+    }
   };
 
   ws.onopen = () => ws.send(JSON.stringify({ type: "join", room, from: myId }));
 
-  // --- Mikrofon abrufen ---
+  // --- Mikrofon + Funkfilter ---
   localStream = await navigator.mediaDevices.getUserMedia({
     audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true }
   });
 
-  // --- Funkfilter / Rauschen ---
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   const source = audioCtx.createMediaStreamSource(localStream);
 
-  // Bandpass Filter
   const filter = audioCtx.createBiquadFilter();
   filter.type = "bandpass";
   filter.frequency.value = 3000;
   filter.Q.value = 1;
 
-  // Leises Rauschen
   const noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 1, audioCtx.sampleRate);
   const noiseData = noiseBuffer.getChannelData(0);
   for (let i = 0; i < noiseData.length; i++) noiseData[i] = (Math.random() * 2 - 1) * 0.02;
@@ -138,7 +198,6 @@ async function startConnection() {
   const noiseGain = audioCtx.createGain();
   noiseGain.gain.value = 1.0;
 
-  // Verbindung
   source.connect(filter);
   noise.connect(noiseGain);
   noiseGain.connect(filter);
@@ -161,16 +220,17 @@ async function startTalking() {
   if (channelBusy) return;
   ws.send(JSON.stringify({ type: "request_lock", room, from: myId }));
 
-  // optional: Sound beim Drücken
   talkSound.currentTime = 0;
   talkSound.play().catch(()=>{});
 
+  setDisplayText("TX – SENDING");
   filteredStream.getTracks().forEach(track => pc.addTrack(track, filteredStream));
   await renegotiate();
 }
 
 async function stopTalking() {
   ws.send(JSON.stringify({ type: "release_lock", room, from: myId }));
+  setDisplayText("FREE – CH 1");
 
   pc.getSenders().forEach(sender => {
     if (sender.track && sender.track.kind === 'audio') pc.removeTrack(sender);
