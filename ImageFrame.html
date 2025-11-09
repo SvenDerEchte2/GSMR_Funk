@@ -29,21 +29,29 @@
   /* === DISPLAY === */
   #displayPanel {
     position: absolute;
-    top: 227px;         /* Position anpassbar */
-    left: 50px;        /* Position anpassbar */
-    width: 110px;      /* Breite anpassbar */
-    height: 142px;      /* Höhe anpassbar */
-    background-color: lch(#585858);
-    color: #00ff66;
+    top: 227px;         
+    left: 50px;        
+    width: 110px;      
+    height: 142px;      
+    background-color: #222; /* Gerät aus = dunkel */
+    color: #000000;
     font-family: "Courier New", monospace;
     font-size: 20px;
+    font-weight: bold;  /* <-- Hier den Text fett machen */
     display: flex;
     align-items: center;
     justify-content: center;
     border: 2px solid #00ff6600;
     border-radius: 6px;
     box-shadow: 0 0 8px #00ff6600;
-    text-shadow: 0 0 5px #00ff66;
+    flex-direction: column;
+  }
+
+  #bootImage {
+    max-width: 80px;
+    max-height: 80px;
+    display: none;
+    margin-bottom: 5px;
   }
 
   /* === BUTTONS === */
@@ -77,6 +85,27 @@
   #btn-action9 { bottom: 157px; left: 129px; }
   #btn-action0 { bottom: 123px; left: 88px; }
   #btn-actionRuf { bottom: 270px; left: 44px; }
+  #btn-actionAus { bottom: 270px; right: 46px; }
+
+  #separator {
+    position: absolute;
+    top: 20px;
+    width: 100%;               /* Breite der Linie */
+    height: 4px;              /* Dicke */
+    background-color: #00fff2; /* Farbe passend zu Text */
+    margin: 4px 0;            /* Abstand oben/unten */
+    display: none;
+  }
+
+  #clock {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    font-size: 14px;
+    font-weight: bold;
+    color: #000000;
+    display: none;
+  }
 </style>
 </head>
 <body>
@@ -84,7 +113,12 @@
   <img id="displayImage" alt="Bild">
 
   <!-- FUNK DISPLAY -->
-  <div id="displayPanel">CH 1 – GSMR</div>
+  <div id="displayPanel">
+    <img id="bootImage" src="boot_logo.png" alt="Boot">
+    <div id="clock"></div>
+    <div id="separator"></div>
+    <span id="displayText"></span>
+  </div>
 
   <!-- TASTEN -->
   <button class="overlay-btn" id="btn-action1">X</button>
@@ -97,7 +131,8 @@
   <button class="overlay-btn" id="btn-action8">X</button>
   <button class="overlay-btn" id="btn-action9">X</button>
   <button class="overlay-btn" id="btn-action0">X</button>
-  <button class="overlay-btn" id="btn-actionRuf">🎙️</button>
+  <button class="overlay-btn" id="btn-actionRuf">X</button>
+  <button class="overlay-btn" id="btn-actionAus">X</button>
 </div>
 
 <script>
@@ -109,18 +144,59 @@ else document.body.innerHTML = '<p style="color:white">Kein Bild angegeben.</p>'
 
 // --- DISPLAY FUNKTION ---
 const displayPanel = document.getElementById('displayPanel');
+const displayTextSpan = document.getElementById('displayText');
+const bootImage = document.getElementById('bootImage');
 function setDisplayText(text) {
-  displayPanel.textContent = text;
+  displayTextSpan.textContent = text;
 }
 
 // --- WebRTC / PTT ---
 let pc, localStream, filteredStream;
-const room = "GSMR";
+const room = "DN_ALLG";
 const myId = Math.random().toString(36).substring(2,9);
 const ws = new WebSocket("wss://gsmr-funk.onrender.com");
 
 const talkSound = new Audio("Funken.wav");
 let channelBusy = false;
+
+// --- DEVICE POWER + HOCHFAHR SEQUENZ ---
+let deviceOn = false;
+const btnPower = document.getElementById('btn-actionAus');
+let powerTimer = null;
+
+btnPower.addEventListener('mousedown', () => {
+  if (deviceOn) return;
+  powerTimer = setTimeout(powerOnSequence, 3000);
+});
+btnPower.addEventListener('mouseup', () => { if (powerTimer) clearTimeout(powerTimer); });
+btnPower.addEventListener('touchstart', (e) => { e.preventDefault(); if (deviceOn) return; powerTimer = setTimeout(powerOnSequence, 3000); });
+btnPower.addEventListener('touchend', (e) => { e.preventDefault(); if (powerTimer) clearTimeout(powerTimer); });
+
+function powerOnSequence() {
+  deviceOn = true;
+  displayPanel.style.backgroundColor = "#fff";
+  bootImage.style.display = "block";
+  setDisplayText(""); // Text ausblenden während Bootbild
+  console.log("🔌 Gerät eingeschaltet, Hochfahr-Sequenz startet");
+
+  setTimeout(() => {
+    bootImage.style.display = "none";
+    setDisplayText("DN_ALLG");
+    separator.style.display = "block";
+    clock.style.display = "block";
+    console.log("✅ Hochfahr-Sequenz abgeschlossen, Gerät einsatzbereit");
+  }, 5000); // 5 Sekunden Bootbild
+}
+
+function updateClock() {
+  const now = new Date();
+  const hours = now.getHours().toString().padStart(2,'0');
+  const minutes = now.getMinutes().toString().padStart(2,'0');
+  document.getElementById('clock').textContent = `${hours}:${minutes}`;
+}
+
+setInterval(updateClock, 1000);
+updateClock();
 
 // --- WebRTC helper ---
 async function renegotiate() {
@@ -162,14 +238,13 @@ async function startConnection() {
       }
     }
 
-    // --- CHANNEL LOCKS ---
     if (msg.type === "lock_granted") {
       channelBusy = true;
-      setDisplayText("BUSY – GSMR");
+      if (deviceOn) setDisplayText("Sending...");
     }
     if (msg.type === "unlock") {
       channelBusy = false;
-      setDisplayText("FREE – CH 1");
+      if (deviceOn) setDisplayText("DN_ALLG");
     }
   };
 
@@ -214,23 +289,24 @@ async function startConnection() {
 startConnection();
 
 // --- Push-to-Talk ---
-const btnAction = document.getElementById('btn-actionRuf');
+const btnPTT = document.getElementById('btn-actionRuf');
 
 async function startTalking() {
-  if (channelBusy) return;
+  if (!deviceOn || channelBusy) return;
   ws.send(JSON.stringify({ type: "request_lock", room, from: myId }));
 
   talkSound.currentTime = 0;
   talkSound.play().catch(()=>{});
 
-  setDisplayText("TX – SENDING");
+  setDisplayText("Sending...");
   filteredStream.getTracks().forEach(track => pc.addTrack(track, filteredStream));
   await renegotiate();
 }
 
 async function stopTalking() {
+  if (!deviceOn) return;
   ws.send(JSON.stringify({ type: "release_lock", room, from: myId }));
-  setDisplayText("FREE – CH 1");
+  setDisplayText("DN_ALLG");
 
   pc.getSenders().forEach(sender => {
     if (sender.track && sender.track.kind === 'audio') pc.removeTrack(sender);
@@ -238,10 +314,10 @@ async function stopTalking() {
   await renegotiate();
 }
 
-btnAction.addEventListener('mousedown', startTalking);
-btnAction.addEventListener('mouseup', stopTalking);
-btnAction.addEventListener('touchstart', (e) => { e.preventDefault(); startTalking(); });
-btnAction.addEventListener('touchend', (e) => { e.preventDefault(); stopTalking(); });
+btnPTT.addEventListener('mousedown', startTalking);
+btnPTT.addEventListener('mouseup', stopTalking);
+btnPTT.addEventListener('touchstart', (e) => { e.preventDefault(); startTalking(); });
+btnPTT.addEventListener('touchend', (e) => { e.preventDefault(); stopTalking(); });
 </script>
 </body>
 </html>
