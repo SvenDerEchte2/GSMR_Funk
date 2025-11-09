@@ -21,15 +21,33 @@
     user-select: none;
   }
   .overlay-btn:hover { background-color: rgba(59,130,246,1); transform: scale(1.05); }
-  #btn-close { top: 10px; right: 10px; }
-  #btn-action { bottom: 225px; left: 49px; }
+  #btn-action1 { bottom: 225px; left: 49px; }
+  #btn-action2 { bottom: 225px; left: 88px; }
+  #btn-action3 { bottom: 225px; left: 129px; }
+  #btn-action4 { bottom: 191px; left: 49px; }
+  #btn-action5 { bottom: 191px; left: 88px; }
+  #btn-action6 { bottom: 191px; left: 129px; }
+  #btn-action7 { bottom: 157px; left: 49px; }
+  #btn-action8 { bottom: 157px; left: 88px; }
+  #btn-action9 { bottom: 157px; left: 129px; }
+  #btn-action0 { bottom: 123px; left: 88px; }
+  #btn-actionRuf { bottom: 270px; left: 44px; }
 </style>
 </head>
 <body>
 <div class="image-container">
   <img id="displayImage" alt="Bild">
-  <button class="overlay-btn" id="btn-close">✕</button>
-  <button class="overlay-btn" id="btn-action">🎙️</button>
+    <button class="overlay-btn" id="btn-action1">X</button>
+    <button class="overlay-btn" id="btn-action2">X</button>
+    <button class="overlay-btn" id="btn-action3">X</button>
+    <button class="overlay-btn" id="btn-action4">X</button>
+    <button class="overlay-btn" id="btn-action5">X</button>
+    <button class="overlay-btn" id="btn-action6">X</button>
+    <button class="overlay-btn" id="btn-action7">X</button>
+    <button class="overlay-btn" id="btn-action8">X</button>
+    <button class="overlay-btn" id="btn-action9">X</button>
+    <button class="overlay-btn" id="btn-action0">X</button>
+    <button class="overlay-btn" id="btn-actionRuf">X</button>
 </div>
 
 <script>
@@ -38,8 +56,6 @@ const src = params.get('src');
 const img = document.getElementById('displayImage');
 if (src) img.src = src;
 else document.body.innerHTML = '<p style="color:white">Kein Bild angegeben.</p>';
-
-document.getElementById('btn-close').addEventListener('click', () => window.close());
 
 // --- WebRTC / PTT ---
 let pc, localStream, filteredStream;
@@ -139,7 +155,7 @@ async function startConnection() {
 startConnection();
 
 // --- Push-to-Talk ---
-const btnAction = document.getElementById('btn-action');
+const btnAction = document.getElementById('btn-actionRuf');
 
 async function startTalking() {
   if (channelBusy) return;
