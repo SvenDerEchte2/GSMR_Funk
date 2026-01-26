@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Integrierte Leitstelle</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+
+    body, html {
+      margin: 0; padding: 0;
+      font-family: 'Roboto', sans-serif;
+      background: linear-gradient(135deg, #2b0d0d, #4a1c1c); /* rot statt blau */
+      color: #eee;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background-color: #b30000; /* vorher #0a68ff */
+      padding: 20px 40px;
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: none;
+    }
+
+    main {
+      flex: 1;
+      padding: 40px;
+    }
+
+    .welcome {
+      font-size: 1.4rem;
+      margin-bottom: 30px;
+    }
+
+    button.logout-btn {
+      background: #ff4c4c;
+      border: none;
+      color: white;
+      padding: 10px 20px;
+      font-size: 1rem;
+      font-weight: 700;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.25s ease;
+      user-select: none;
+    }
+    button.logout-btn:hover {
+      background: #cc0000;
+    }
+
+    /* Beispiel Buttons für Funktionen */
+    .functions {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .functions button {
+      background: #b30000; /* vorher #0a68ff */
+      border: none;
+      padding: 20px 30px;
+      color: white;
+      font-weight: 700;
+      font-size: 1.1rem;
+      border-radius: 12px;
+      cursor: pointer;
+      user-select: none;
+      box-shadow: 0 0 20px #b3000088; /* rot statt blau */
+      transition: background 0.25s ease;
+      flex: 1 1 200px;
+      max-width: 250px;
+    }
+    .functions button:hover {
+      background: #800000; /* vorher #004ecb */
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  Integrierte Leitstelle
+  <button class="logout-btn" id="logout-btn">Logout</button>
+</header>
+
+<main>
+  <div class="welcome" id="welcome-message">
+    <!-- Begrüßung kommt per JS -->
+  </div>
+
+  <div class="functions">
+    <button class="btn-fahrzeuge" onclick="window.location.href='FahrzeugAuswahl.html'">Fahrzeug besetzen</button>
+    <button class="btn-melder" id="openbtn">Melder Öffnen</button>
+    <button class="btn-leitstelle" onclick="window.location.href='Leitstellentableau.html'">Leitstelle besetzen</button>
+    <button id="btn-verwaltung">Verwaltung</button>
+    <button id="btn-administation">Administration</button>
+  </div>
+</main>
+
+<script type="module">
+  import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+  const supabaseUrl = 'https://cbbfwriktcdcmmhbpubp.supabase.co';
+  const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiYmZ3cmlrdGNkY21taGJwdWJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI0Mjk1NTcsImV4cCI6MjA3ODAwNTU1N30.jFMS63ilrepPnstVtBGDd1jjEkd9lrmRMmtVYMBJ8Ok';
+  const supabase = createClient(supabaseUrl, supabaseKey)
+
+  const welcomeMessage = document.getElementById('welcome-message')
+  const logoutBtn = document.getElementById('logout-btn')
+
+  async function checkUser() {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      window.location.href = 'LogIn.html'
+      return
+    }
+    welcomeMessage.textContent = `Willkommen, ${user.email}`
+  }
+
+  logoutBtn.addEventListener('click', async () => {
+    await supabase.auth.signOut()
+    window.location.href = 'LogIn.html'
+  })
+
+  checkUser()
+
+  const btn = document.getElementById('openbtn');
+  btn.addEventListener('click', () => {
+    const imgSrc = 'melder.png';
+    const img = new Image();
+    img.src = imgSrc;
+    img.onload = () => {
+      const width = img.width;
+      const height = img.height;
+
+      // open the separate HTML file with exact image size
+      window.open(`Melder.html?src=${encodeURIComponent(imgSrc)}`, '_blank',
+        `width=${width},height=${height},resizable=yes`);
+    };
+  });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Image Frame + Push-to-Talk</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .image-container {
+    position: relative;
+    display: inline-block;
+  }
+
+  img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* === DISPLAY === */
+  #displayPanel {
+    position: absolute;
+    top: 325px;         
+    left: 60px;        
+    width: 150px;      
+    height: 119px;      
+    background-color: #222; /* Gerät aus = dunkel */
+    color: #000000;
+    font-family: "Courier New", monospace;
+    font-size: 20px;
+    font-weight: bold;  /* <-- Hier den Text fett machen */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #00ff6600;
+    border-radius: 6px;
+    box-shadow: 0 0 8px #00ff6600;
+    flex-direction: column;
+  }
+
+  #bootImage {
+    max-width: 80px;
+    max-height: 80px;
+    display: none;
+    margin-bottom: 5px;
+  }
+
+  /* === BUTTONS === */
+  .overlay-btn {
+    position: absolute;
+    background-color: rgba(37, 99, 235, 0.85);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: 0.2s;
+    user-select: none;
+  }
+
+  .overlay-btn:hover {
+    background-color: rgba(59,130,246,1);
+    transform: scale(1.05);
+  }
+
+  /* Tastenpositionen */
+  #btn-action1 { bottom: 137px; left: 61px; }
+  #btn-action2 { bottom: 137px; left: 115px; }
+  #btn-action3 { bottom: 137px; left: 171px; }
+  #btn-action4 { bottom: 101px; left: 61px; }
+  #btn-action5 { bottom: 101px; left: 115px; }
+  #btn-action6 { bottom: 101px; left: 171px; }
+  #btn-action7 { bottom: 66px; left: 61px; }
+  #btn-action8 { bottom: 66px; left: 115px; }
+  #btn-action9 { bottom: 66px; left: 171px; }
+  #btn-action0 { bottom: 29px; left: 115px; }
+  #btn-actionRuf { bottom: 179px; left: 55px; }
+  #btn-actionAus { bottom: 179px; right: 40px; }
+
+  #separator {
+    position: absolute;
+    top: 20px;
+    width: 100%;               /* Breite der Linie */
+    height: 4px;              /* Dicke */
+    background-color: #00fff2; /* Farbe passend zu Text */
+    margin: 4px 0;            /* Abstand oben/unten */
+    display: none;
+  }
+
+  #clock {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    font-size: 14px;
+    font-weight: bold;
+    color: #000000;
+    display: none;
+  }
+</style>
+</head>
+<body>
+<div class="image-container">
+  <img id="displayImage" alt="Bild">
+
+  <!-- FUNK DISPLAY -->
+  <div id="displayPanel">
+    <img id="bootImage" src="boot_logo.png" alt="Boot">
+    <div id="clock"></div>
+    <div id="separator"></div>
+    <span id="displayText"></span>
+  </div>
+
+  <!-- TASTEN -->
+  <button class="overlay-btn" id="btn-action1">X</button>
+  <button class="overlay-btn" id="btn-action2">X</button>
+  <button class="overlay-btn" id="btn-action3">X</button>
+  <button class="overlay-btn" id="btn-action4">X</button>
+  <button class="overlay-btn" id="btn-action5">X</button>
+  <button class="overlay-btn" id="btn-action6">X</button>
+  <button class="overlay-btn" id="btn-action7">X</button>
+  <button class="overlay-btn" id="btn-action8">X</button>
+  <button class="overlay-btn" id="btn-action9">X</button>
+  <button class="overlay-btn" id="btn-action0">X</button>
+  <button class="overlay-btn" id="btn-actionRuf">X</button>
+  <button class="overlay-btn" id="btn-actionAus">X</button>
+</div>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const src = params.get('src');
+const img = document.getElementById('displayImage');
+if (src) img.src = src;
+else document.body.innerHTML = '<p style="color:white">Kein Bild angegeben.</p>';
+
+// --- DISPLAY FUNKTION ---
+const displayPanel = document.getElementById('displayPanel');
+const displayTextSpan = document.getElementById('displayText');
+const bootImage = document.getElementById('bootImage');
+function setDisplayText(text) {
+  displayTextSpan.textContent = text;
+}
+
+// --- WebRTC / PTT ---
+let pc, localStream, filteredStream;
+const room = "DN_ALLG";
+const myId = Math.random().toString(36).substring(2,9);
+const ws = new WebSocket("wss://gsmr-funk.onrender.com");
+
+const talkSound = new Audio("Funken.wav");
+let channelBusy = false;
+
+// --- DEVICE POWER + HOCHFAHR SEQUENZ ---
+let deviceOn = false;
+const btnPower = document.getElementById('btn-actionAus');
+let powerTimer = null;
+
+btnPower.addEventListener('mousedown', () => {
+  if (deviceOn) return;
+  powerTimer = setTimeout(powerOnSequence, 3000);
+});
+btnPower.addEventListener('mouseup', () => { if (powerTimer) clearTimeout(powerTimer); });
+btnPower.addEventListener('touchstart', (e) => { e.preventDefault(); if (deviceOn) return; powerTimer = setTimeout(powerOnSequence, 3000); });
+btnPower.addEventListener('touchend', (e) => { e.preventDefault(); if (powerTimer) clearTimeout(powerTimer); });
+
+function powerOnSequence() {
+  deviceOn = true;
+  displayPanel.style.backgroundColor = "#fff";
+  bootImage.style.display = "block";
+  setDisplayText(""); // Text ausblenden während Bootbild
+  console.log("🔌 Gerät eingeschaltet, Hochfahr-Sequenz startet");
+
+  setTimeout(() => {
+    bootImage.style.display = "none";
+    setDisplayText("DN_ALLG");
+    separator.style.display = "block";
+    clock.style.display = "block";
+    console.log("✅ Hochfahr-Sequenz abgeschlossen, Gerät einsatzbereit");
+  }, 5000); // 5 Sekunden Bootbild
+}
+
+function updateClock() {
+  const now = new Date();
+  const hours = now.getHours().toString().padStart(2,'0');
+  const minutes = now.getMinutes().toString().padStart(2,'0');
+  document.getElementById('clock').textContent = `${hours}:${minutes}`;
+}
+
+setInterval(updateClock, 1000);
+updateClock();
+
+// --- WebRTC helper ---
+async function renegotiate() {
+  if (!pc) return;
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  ws.send(JSON.stringify({ type: "signal", room, payload: { sdp: offer } }));
+}
+
+// --- Start WebRTC connection ---
+async function startConnection() {
+  pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+
+  const remoteAudio = document.createElement("audio");
+  remoteAudio.autoplay = true;
+  pc.ontrack = e => remoteAudio.srcObject = e.streams[0];
+  document.body.appendChild(remoteAudio);
+
+  pc.onicecandidate = e => {
+    if (e.candidate) ws.send(JSON.stringify({ type: "signal", room, payload: { candidate: e.candidate } }));
+  };
+
+  ws.onmessage = async (event) => {
+    const msg = JSON.parse(event.data);
+
+    if (msg.type === "ready") await renegotiate();
+
+    if (msg.type === "signal") {
+      const { sdp, candidate } = msg.payload;
+      if (sdp) {
+        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        if (sdp.type === "offer") {
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          ws.send(JSON.stringify({ type: "signal", room, payload: { sdp: answer } }));
+        }
+      } else if (candidate) {
+        try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch(e){ console.error(e); }
+      }
+    }
+
+    if (msg.type === "lock_granted") {
+      channelBusy = true;
+      if (deviceOn) setDisplayText("Sending...");
+    }
+    if (msg.type === "unlock") {
+      channelBusy = false;
+      if (deviceOn) setDisplayText("DN_ALLG");
+    }
+  };
+
+  ws.onopen = () => ws.send(JSON.stringify({ type: "join", room, from: myId }));
+
+  // --- Mikrofon + Funkfilter ---
+  localStream = await navigator.mediaDevices.getUserMedia({
+    audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true }
+  });
+
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = audioCtx.createMediaStreamSource(localStream);
+
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.value = 3000;
+  filter.Q.value = 1;
+
+  const noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 1, audioCtx.sampleRate);
+  const noiseData = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < noiseData.length; i++) noiseData[i] = (Math.random() * 2 - 1) * 0.02;
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = noiseBuffer;
+  noise.loop = true;
+
+  const noiseGain = audioCtx.createGain();
+  noiseGain.gain.value = 1.0;
+
+  source.connect(filter);
+  noise.connect(noiseGain);
+  noiseGain.connect(filter);
+
+  const destination = audioCtx.createMediaStreamDestination();
+  filter.connect(destination);
+  filteredStream = destination.stream;
+
+  noise.start();
+
+  console.log("🎤 Mikrofon + Funkfilter bereit.");
+}
+
+startConnection();
+
+// --- Push-to-Talk ---
+const btnPTT = document.getElementById('btn-actionRuf');
+
+async function startTalking() {
+  if (!deviceOn || channelBusy) return;
+  ws.send(JSON.stringify({ type: "request_lock", room, from: myId }));
+
+  talkSound.currentTime = 0;
+  talkSound.play().catch(()=>{});
+
+  setDisplayText("Sending...");
+  filteredStream.getTracks().forEach(track => pc.addTrack(track, filteredStream));
+  await renegotiate();
+}
+
+async function stopTalking() {
+  if (!deviceOn) return;
+  ws.send(JSON.stringify({ type: "release_lock", room, from: myId }));
+  setDisplayText("DN_ALLG");
+
+  pc.getSenders().forEach(sender => {
+    if (sender.track && sender.track.kind === 'audio') pc.removeTrack(sender);
+  });
+  await renegotiate();
+}
+
+btnPTT.addEventListener('mousedown', startTalking);
+btnPTT.addEventListener('mouseup', stopTalking);
+btnPTT.addEventListener('touchstart', (e) => { e.preventDefault(); startTalking(); });
+btnPTT.addEventListener('touchend', (e) => { e.preventDefault(); stopTalking(); });
+</script>
+</body>
+</html>

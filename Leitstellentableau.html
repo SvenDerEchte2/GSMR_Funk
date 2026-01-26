@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Integrierte Leitstelle</title>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+
+    body, html {
+      margin: 0;
+      padding: 0;
+      font-family: 'Roboto', sans-serif;
+      background: linear-gradient(135deg, #2b0d0d, #4a1c1c);
+      color: #eee;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background-color: #b30000;
+      padding: 20px;
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: white;
+      text-align: center;
+      user-select: none;
+    }
+
+    /* BUTTON-PANEL OBEN */
+    .button-panel {
+      width: 100%;
+      background-color: #3a1a1a;
+      padding: 10px 20px;
+      display: flex;
+      gap: 10px;
+      box-sizing: border-box;
+      flex-wrap: wrap;
+    }
+
+    .button-panel button {
+      flex: 1;
+      padding: 10px;
+      font-weight: bold;
+      border-radius: 6px;
+      border: none;
+      background-color: #b30000;
+      color: white;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .button-panel button:hover { background-color: #ff0000; }
+
+    /* Alarm-Button groß + pulsierend */
+    .alarm-btn {
+      flex: 1 1 100%;
+      padding: 18px;
+      font-size: 1.4rem;
+      font-weight: 900;
+      background: linear-gradient(180deg, #ff0000, #b30000);
+      color: white;
+      border: 3px solid #ff5555;
+      border-radius: 12px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      animation: pulse 1s infinite;
+    }
+    .alarm-btn:hover { background: linear-gradient(180deg, #ff4444, #cc0000); }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 10px #ff0000; transform: translateY(0); }
+      50% { box-shadow: 0 0 30px #ff4444; transform: translateY(-2px); }
+      100% { box-shadow: 0 0 10px #ff0000; transform: translateY(0); }
+    }
+
+    /* ---- Layout: Links Formular | Rechts Fahrzeugliste + Einsätze ---- */
+    .container { display: flex; flex: 1; overflow: hidden; }
+
+    main {
+      width: 55%;
+      padding: 20px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px 40px;
+      overflow-y: auto;
+    }
+
+    label { display: flex; flex-direction: column; font-weight: 700; font-size: 1rem; color: #ddd; margin-bottom: 10px; }
+
+    input[type="text"],
+    input[type="time"],
+    input[type="checkbox"],
+    textarea {
+      margin-top: 5px;
+      padding: 8px 10px;
+      font-size: 1rem;
+      border-radius: 6px;
+      border: none;
+      outline: none;
+      background-color: #3a1a1a;
+      color: #eee;
+      box-shadow: inset 0 0 5px #000000aa;
+    }
+
+    /* RECHTER BEREICH – FAHRZEUGE + EINSÄTZE */
+    #right-panel {
+      width: 25%;
+      border-left: 2px solid #00000055;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      background: #2a0f0f;
+    }
+
+    /* Fahrzeugliste */
+    .org { margin-top: 10px; cursor: pointer; font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+    .org:hover { color: #ffaaaa; }
+
+    .vehicle-list { margin-left: 12px; margin-top: 6px; display: none; }
+
+    .vehicle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px;
+      margin: 6px 0;
+      background: #3a1a1a;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: transform .08s;
+    }
+    .vehicle:hover { background: #542222; transform: translateY(-1px); }
+
+    .vehicle-label { background: #b30000; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; font-weight: bold; }
+
+    /* ausgewähltes Fahrzeug */
+    .selected-vehicle {
+      background-color: #8b0000 !important;
+      box-shadow: 0 0 12px #ff4444;
+      transform: scale(1.02);
+    }
+
+    /* Einsatzbereich */
+    #einsatz-panel { margin-top: 20px; }
+
+    .einsatz {
+      padding: 6px 8px;
+      margin: 6px 0;
+      background: #3a1a1a;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .einsatz:hover { background: #542222; }
+
+    .selected-einsatz {
+      background: #0b3b0b !important;
+      box-shadow: 0 0 10px #1db71d;
+      transform: scale(1.01);
+    }
+
+    .einsatz-buttons { margin-top: 10px; display: flex; gap: 5px; flex-wrap: wrap; }
+    .einsatz-buttons button { flex: 1; padding: 8px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; background-color: #b30000; color: white; }
+    .ptt-button { background-color: #0055ff; }
+    .ptt-button:hover { background-color: #3399ff; }
+
+  </style>
+</head>
+<body>
+
+<header>Integrierte Leitstelle</header>
+
+<div class="button-panel">
+  <button id="btn1">Neuer Einsatz</button>
+  <button id="btn2">Einsatz Abschließen</button>
+  <button id="btn3">Lagemeldung</button>
+  <button id="btn4">Patient anmelden</button>
+  <button id="btn5">Schließen</button>
+  <button id="btn6">Karte</button>
+  <button id="btn7">Gefahrgut-DB</button>
+
+  <!-- großer Alarm-Button -->
+  <button id="alarm-button" class="alarm-btn">🚨 Alarm auslösen</button>
+</div>
+
+<div class="container">
+  <!-- LINKER BEREICH – FORMULAR -->
+  <main>
+    <label for="melder">Melder/Anrufer</label>
+    <input type="text" id="melder" name="melder" />
+
+    <label for="strasse">Straße/Nr.</label>
+    <input type="text" id="strasse" name="strasse" />
+
+    <label for="objekt">Objekt</label>
+    <input type="text" id="objekt" name="objekt" />
+
+    <label for="ort">Ort</label>
+    <input type="text" id="ort" name="ort" />
+
+    <label for="stadtteil">Stadtteil</label>
+    <input type="text" id="stadtteil" name="stadtteil" />
+
+    <label for="stichwort">Stichwort</label>
+    <input type="text" id="stichwort" name="stichwort" />
+
+    <label for="meldebild">Meldebild</label>
+    <input type="text" id="meldebild" name="meldebild" />
+
+    <label for="sonstiges">Sonstiges</label>
+    <input type="text" id="sonstiges" name="sonstiges" />
+
+    <label for="sondersignale">Sondersignale (SoSi)</label>
+    <input type="checkbox" id="sondersignale" name="sondersignale" />
+  </main>
+
+  <!-- RECHTER BEREICH -->
+  <div id="right-panel">
+    <!-- Fahrzeugliste -->
+    <div id="fahrzeug-panel"></div>
+
+    <!-- Einsätze -->
+    <div id="einsatz-panel">
+      <h3>Einsätze (offen)</h3>
+      <div id="einsatz-list"></div>
+
+      <div class="einsatz-buttons">
+        <button id="btn_dn_allg">DN_ALLG</button>
+        <button id="btn_dn_fw">DN_FW</button>
+        <button id="btn_dn_pol">DN_POL</button>
+        <button id="btn_ptt" class="ptt-button">PTT (halten)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SUPABASE -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  // === TRAGE HIER DEINE SUPABASE DATEN EIN ===
+  const SUPABASE_URL = "https://cbbfwriktcdcmmhbpubp.supabase.co";
+  const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiYmZ3cmlrdGNkY21taGJwdWJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI0Mjk1NTcsImV4cCI6MjA3ODAwNTU1N30.jFMS63ilrepPnstVtBGDd1jjEkd9lrmRMmtVYMBJ8Ok";
+
+  // Client
+  const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // Auswahl / State
+  let selectedVehicles = new Set();
+  let currentEinsatzId = null;
+
+  // --------------- Fahrzeuge laden + selektierbar machen ---------------
+  async function loadFahrzeuge() {
+    const { data: orgs, error: err1 } = await db.from("organisations").select("*").order("name");
+    if (err1) { console.error(err1); return; }
+    const { data: fahrzeuge, error: err2 } = await db.from("fahrzeuge").select("*").order("name");
+    if (err2) { console.error(err2); return; }
+
+    buildFahrzeugTree(orgs || [], fahrzeuge || []);
+  }
+
+  function buildFahrzeugTree(orgs, fahrzeuge) {
+    const panel = document.getElementById("fahrzeug-panel");
+    panel.innerHTML = "";
+
+    orgs.forEach(org => {
+      const orgDiv = document.createElement("div");
+      orgDiv.className = "org";
+      orgDiv.textContent = "📁 " + org.name;
+
+      const list = document.createElement("div");
+      list.className = "vehicle-list";
+
+      fahrzeuge.filter(v => v.org_id === org.id)
+        .forEach(v => {
+          const vehicleDiv = document.createElement("div");
+          vehicleDiv.className = "vehicle";
+          vehicleDiv.dataset.id = v.id;
+          vehicleDiv.innerHTML = `🚒 ${v.name} <span class="vehicle-label">${v.status ?? ""}</span>`;
+
+          // Auswahl-Handler
+          vehicleDiv.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const id = Number(vehicleDiv.dataset.id);
+            if (selectedVehicles.has(id)) {
+              selectedVehicles.delete(id);
+              vehicleDiv.classList.remove("selected-vehicle");
+            } else {
+              selectedVehicles.add(id);
+              vehicleDiv.classList.add("selected-vehicle");
+            }
+            // Debug
+            // console.log("Selected vehicles:", [...selectedVehicles]);
+          });
+
+          list.appendChild(vehicleDiv);
+        });
+
+      orgDiv.addEventListener("click", () => {
+        list.style.display = list.style.display === "block" ? "none" : "block";
+      });
+
+      panel.appendChild(orgDiv);
+      panel.appendChild(list);
+    });
+  }
+
+  // --------------- Einsätze laden (nur offene) + klick lädt ins Formular ---------------
+  async function loadEinsaetze() {
+    const { data: einsaetze, error } = await db
+      .from("einsaetze")
+      .select("*")
+      .eq("abgeschlossen", false)
+      .order("datum", { ascending: true })
+      .order("uhrzeit", { ascending: true });
+
+    if (error) { console.error(error); return; }
+
+    const listDiv = document.getElementById("einsatz-list");
+    listDiv.innerHTML = "";
+
+    (einsaetze || []).forEach(e => {
+      const div = document.createElement("div");
+      div.className = "einsatz";
+      div.dataset.id = e.id;
+      div.innerHTML = `🚨 <strong>${escapeHtml(e.stichwort)}</strong> — ${escapeHtml(String(e.ort))} <div style="font-size:0.8rem;color:#ccc">${e.datum} ${e.uhrzeit}</div>`;
+
+      // Klick -> Einsatz in Inputs laden
+      div.addEventListener("click", () => {
+        // markieren
+        document.querySelectorAll(".einsatz").forEach(x => x.classList.remove("selected-einsatz"));
+        div.classList.add("selected-einsatz");
+        currentEinsatzId = e.id;
+
+        // Felder füllen
+        document.getElementById("melder").value = e.melder ?? "";
+        document.getElementById("strasse").value = e.straße ?? "";
+        document.getElementById("objekt").value = e.objekt ?? "";
+        document.getElementById("ort").value = e.ort ?? "";
+        document.getElementById("stadtteil").value = e.stadtteil ?? "";
+        document.getElementById("stichwort").value = e.stichwort ?? "";
+        document.getElementById("meldebild").value = e.meldebild ?? "";
+        document.getElementById("sonstiges").value = e.sonstiges ?? "";
+        document.getElementById("sondersignale").checked = !!e.sondersignale;
+      });
+
+      listDiv.appendChild(div);
+    });
+  }
+
+  // small helper to avoid XSS when injecting DB text into innerHTML
+  function escapeHtml(s = "") {
+    return String(s)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+
+  // --------------- Alarmieren: Einsatz anlegen + fahrzeuge zuordnen ---------------
+  async function alarmieren() {
+    // gather values
+    const melder = document.getElementById("melder").value;
+    const strasse = document.getElementById("strasse").value;
+    const objekt = document.getElementById("objekt").value;
+    const ort = document.getElementById("ort").value;
+    const stadtteil = document.getElementById("stadtteil").value;
+    const stichwort = document.getElementById("stichwort").value;
+    const meldebild = document.getElementById("meldebild").value;
+    const sonstiges = document.getElementById("sonstiges").value;
+    const sondersignale = document.getElementById("sondersignale").checked;
+
+    // required field: nr (deine Tabelle verlangt nr smallint not null). Hier 0 als default.
+    const nr = 0;
+
+    const today = new Date();
+    const datum = today.toISOString().split("T")[0];
+    const uhrzeit = today.toTimeString().split(":").slice(0,2).join(":");
+
+    // Insert einsatz
+    const { data: einsatzData, error: err } = await db
+      .from("einsaetze")
+      .insert([{
+        datum,
+        uhrzeit,
+        stichwort,
+        ort,
+        melder,
+        straße: strasse,
+        nr,
+        objekt,
+        stadtteil,
+        meldebild,
+        sonstiges,
+        sondersignale,
+        abgeschlossen: false
+      }])
+      .select()
+      .single();
+
+    if (err) {
+      console.error("Fehler beim Anlegen des Einsatzes:", err);
+      alert("Fehler beim Anlegen des Einsatzes: " + err.message);
+      return;
+    }
+
+    const einsatzId = einsatzData.id;
+
+    // Insert einsatz_fahrzeuge für jede Auswahl (parallel)
+    const inserts = [...selectedVehicles].map(id => ({ einsatz_id: einsatzId, fahrzeug_id: id }));
+    if (inserts.length > 0) {
+      const { error: err2 } = await db.from("einsatz_fahrzeuge").insert(inserts);
+      if (err2) {
+        console.error("Fehler beim Anlegen von einsatz_fahrzeuge:", err2);
+        alert("Fehler beim Zuweisen der Fahrzeuge: " + err2.message);
+        // proceed: Einsatz ist angelegt, Fahrzeuge ggf. später nachtragen
+      }
+    }
+
+    // Reset UI selection
+    selectedVehicles.clear();
+    document.querySelectorAll(".selected-vehicle").forEach(el => el.classList.remove("selected-vehicle"));
+
+    // reload lists
+    await loadEinsaetze();
+    await loadFahrzeuge();
+
+    alert("🚨 Einsatz angelegt und Fahrzeuge zugewiesen!");
+  }
+
+  // --------------- Einsatz abschließen (btn2) ---------------
+  async function schliesseEinsatz() {
+    if (!currentEinsatzId) { alert("Kein Einsatz ausgewählt."); return; }
+    const { error } = await db.from("einsaetze").update({ abgeschlossen: true }).eq("id", currentEinsatzId);
+    if (error) { console.error(error); alert("Fehler beim Abschließen."); return; }
+    // clear selection
+    currentEinsatzId = null;
+    document.querySelectorAll(".selected-einsatz").forEach(x => x.classList.remove("selected-einsatz"));
+    await loadEinsaetze();
+    alert("Einsatz abgeschlossen.");
+  }
+
+  // --------------- Realtime subscriptions ---------------
+  function setupRealtime() {
+    // Fahrzeuge
+    db.channel("realtime_fahrzeuge")
+      .on("postgres_changes", { event: "*", schema: "public", table: "fahrzeuge" }, payload => {
+        // lightweight update: reload vehicles
+        loadFahrzeuge();
+      })
+      .subscribe();
+
+    // Einsätze
+    db.channel("realtime_einsaetze")
+      .on("postgres_changes", { event: "*", schema: "public", table: "einsaetze" }, payload => {
+        loadEinsaetze();
+      })
+      .subscribe();
+
+    // Optional: changes to einsatz_fahrzeuge could update UI as well:
+    db.channel("realtime_einsatz_fahrzeuge")
+      .on("postgres_changes", { event: "*", schema: "public", table: "einsatz_fahrzeuge" }, payload => {
+        // update vehicles or assignments if you show them
+        // for now reload vehicle list to reflect any status changes
+        loadFahrzeuge();
+      })
+      .subscribe();
+  }
+
+  // --------------- Event bindings ---------------
+  document.addEventListener("DOMContentLoaded", () => {
+    // load initial data
+    loadFahrzeuge();
+    loadEinsaetze();
+    setupRealtime();
+
+    // buttons
+    document.getElementById("alarm-button").addEventListener("click", alarmieren);
+    document.getElementById("btn2").addEventListener("click", schliesseEinsatz);
+
+    // PTT button (example: hold to console.log start/stop; you can add real audio/dispatch logic)
+    const pttBtn = document.getElementById("btn_ptt");
+    pttBtn.addEventListener("mousedown", () => {
+      if (!currentEinsatzId) { alert("Kein Einsatz ausgewählt für PTT."); return; }
+      console.log("PTT START for einsatz", currentEinsatzId);
+      // Example: update DB flag (optional)
+      // db.from("einsaetze").update({ ptt_active: true }).eq("id", currentEinsatzId);
+    });
+    pttBtn.addEventListener("mouseup", () => {
+      if (!currentEinsatzId) return;
+      console.log("PTT STOP for einsatz", currentEinsatzId);
+      // db.from("einsaetze").update({ ptt_active: false }).eq("id", currentEinsatzId);
+    });
+  });
+</script>
+
+</body>
+</html>

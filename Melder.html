@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Image Frame + Push-to-Talk</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .image-container {
+    position: relative;
+    display: inline-block;
+  }
+
+  img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* === DISPLAY === */
+  #displayPanel {
+    position: absolute;
+    top: 35px;         
+    left: 32px;        
+    width: 168px;      
+    height: 107px;      
+    background-color: #222c22; /* Gerät aus = dunkel */
+    color: #000000;
+    font-family: "Courier New", monospace;
+    font-size: 20px;
+    font-weight: bold;  /* <-- Hier den Text fett machen */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #222c22;
+    border-radius: 6px;
+    box-shadow: 0 0 8px #00ff6600;
+    flex-direction: column;
+  }
+
+  #bootImage {
+    max-width: 80px;
+    max-height: 80px;
+    display: block;
+    margin-bottom: 5px;
+  }
+
+  /* === BUTTONS === */
+  .overlay-btn {
+    position: absolute;
+    background-color: rgba(37, 99, 235, 0.85);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: 0.2s;
+    user-select: none;
+  }
+
+  .overlay-btn:hover {
+    background-color: rgba(59,130,246,1);
+    transform: scale(1.05);
+  }
+
+  /* Tastenpositionen */
+  #btn-action1 { bottom: 109px; left: 58px; }
+  #btn-actionRuf { bottom: 102px; left: 148px; }
+  #btn-actionAus { bottom: 43px; right: 68px; }
+
+</style>
+</head>
+<body>
+<div class="image-container">
+  <img id="displayImage" alt="Bild">
+
+  <!-- FUNK DISPLAY -->
+  <div id="displayPanel">
+    <img id="bootImage" src="boot_logo.png" alt="Boot">
+
+    <span id="displayText1"></span>
+    <span id="displayText2"></span>
+    <span id="displayText3"></span>
+    <span id="displayText4"></span>
+  </div>
+
+
+  <!-- TASTEN -->
+  <button class="overlay-btn" id="btn-action1">X</button>
+  <button class="overlay-btn" id="btn-actionRuf">X</button>
+  <button class="overlay-btn" id="btn-actionAus">X</button>
+</div>
+
+<script type="module" src="melder-logic.js"></script>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const src = params.get('src');
+const img = document.getElementById('displayImage');
+if (src) img.src = src;
+else document.body.innerHTML = '<p style="color:white">Kein Bild angegeben.</p>';
+</script>
+
+</body>
+</html>
