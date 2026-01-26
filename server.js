@@ -1,9 +1,10 @@
-// Stable WebSocket signaling + push-to-talk lock server
+// Stable WebSocket signaling + push-to-talk lock server (improved)
 const WebSocket = require("ws");
 const wss = new WebSocket.Server({ port: 8080 });
 
-const rooms = {};
-const roomLocks = {}; // room -> { ws, id }
+const rooms = {};        // room -> [ws, ...]
+const roomLocks = {};    // room -> { ws, id }
+const roomLocksMutex = {}; // room -> boolean, prevents race condition
 
 wss.on("connection", (ws) => {
   ws.on("message", (msg) => {
@@ -46,18 +47,27 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    // --- Request to speak ---
+    // --- Request to speak (Push-to-Talk lock) ---
     if (type === "request_lock") {
-      if (!roomLocks[room]) {
-        roomLocks[room] = { ws, id: from };
-        console.log(`🔒 Lock granted to ${from} in ${room}`);
-        broadcast(room, { type: "lock_granted", holder: from });
-      } else if (roomLocks[room].id !== from) {
-        ws.send(JSON.stringify({
-          type: "busy",
-          holder: roomLocks[room].id
-        }));
-        console.log(`🚫 ${from} tried to talk, busy by ${roomLocks[room].id}`);
+      if (!roomLocksMutex[room]) roomLocksMutex[room] = false;
+
+      // prevent race condition
+      if (!roomLocksMutex[room]) {
+        roomLocksMutex[room] = true;
+
+        if (!roomLocks[room]) {
+          roomLocks[room] = { ws, id: from };
+          console.log(`🔒 Lock granted to ${from} in ${room}`);
+          broadcast(room, { type: "lock_granted", holder: from });
+        } else if (roomLocks[room].id !== from) {
+          ws.send(JSON.stringify({
+            type: "busy",
+            holder: roomLocks[room].id
+          }));
+          console.log(`🚫 ${from} tried to talk, busy by ${roomLocks[room].id}`);
+        }
+
+        roomLocksMutex[room] = false;
       }
       return;
     }
@@ -77,7 +87,11 @@ wss.on("connection", (ws) => {
     const room = ws.room;
     if (room && rooms[room]) {
       rooms[room] = rooms[room].filter((c) => c !== ws);
-      if (rooms[room].length === 0) delete rooms[room];
+      if (rooms[room].length === 0) {
+        delete rooms[room];
+        delete roomLocks[room];
+        delete roomLocksMutex[room];
+      }
     }
 
     // Free lock if disconnected user was the holder
@@ -88,7 +102,7 @@ wss.on("connection", (ws) => {
   });
 });
 
-// Helper
+// --- Helper ---
 function broadcast(room, data, exclude) {
   if (!rooms[room]) return;
   for (const c of rooms[room]) {
