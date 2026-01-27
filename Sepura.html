@@ -326,7 +326,6 @@ async function startTalking() {
   talkSound.currentTime = 0;
   talkSound.play().catch(()=>{});
 
-  setDisplayText("Sending...");
   filteredStream.getTracks().forEach(track => pc.addTrack(track, filteredStream));
   await renegotiate();
 }
@@ -349,3 +348,4 @@ btnPTT.addEventListener('touchend', (e) => { e.preventDefault(); stopTalking(); 
 </script>
 </body>
 </html>
+
