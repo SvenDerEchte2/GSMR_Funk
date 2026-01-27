@@ -73,14 +73,24 @@ wss.on("connection", (ws) => {
     }
 
     // --- Release lock ---
-    if (type === "release_lock") {
-      if (roomLocks[room] && roomLocks[room].id === from) {
-        delete roomLocks[room];
-        console.log(`🔓 Lock released by ${from}`);
-        broadcast(room, { type: "unlock", holder: from });
-      }
-      return;
-    }
+    // --- Release lock (mit 2 Sekunden Nachklingen) ---
+if (type === "release_lock") {
+  if (roomLocks[room] && roomLocks[room].id === from) {
+    console.log(`⏳ Lock released by ${from}, will stay 2s before unlocking...`);
+
+    // Clear vorherigen Timeout, falls noch vorhanden
+    if (roomLocks[room].releaseTimeout) clearTimeout(roomLocks[room].releaseTimeout);
+
+    // Lock bleibt noch 2000ms bestehen
+    roomLocks[room].releaseTimeout = setTimeout(() => {
+      delete roomLocks[room];
+      console.log(`🔓 Lock finally released in ${room}`);
+      broadcast(room, { type: "unlock", holder: from });
+    }, 2000);
+  }
+  return;
+}
+
   });
 
   ws.on("close", () => {
