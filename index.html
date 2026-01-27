@@ -103,31 +103,6 @@
 </main>
 
 <script type="module">
-  import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
-
-  const supabaseUrl = 'https://cbbfwriktcdcmmhbpubp.supabase.co';
-  const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiYmZ3cmlrdGNkY21taGJwdWJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI0Mjk1NTcsImV4cCI6MjA3ODAwNTU1N30.jFMS63ilrepPnstVtBGDd1jjEkd9lrmRMmtVYMBJ8Ok';
-  const supabase = createClient(supabaseUrl, supabaseKey)
-
-  const welcomeMessage = document.getElementById('welcome-message')
-  const logoutBtn = document.getElementById('logout-btn')
-
-  async function checkUser() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      window.location.href = 'LogIn.html'
-      return
-    }
-    welcomeMessage.textContent = `Willkommen, ${user.email}`
-  }
-
-  logoutBtn.addEventListener('click', async () => {
-    await supabase.auth.signOut()
-    window.location.href = 'LogIn.html'
-  })
-
-  checkUser()
-
   const btn = document.getElementById('openbtn');
   btn.addEventListener('click', () => {
     const imgSrc = 'melder.png';
@@ -145,4 +120,5 @@
 </script>
 
 </body>
+
 </html>
