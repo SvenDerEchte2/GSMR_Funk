@@ -278,40 +278,69 @@ async function startConnection() {
 
   ws.onopen = () => ws.send(JSON.stringify({ type: "join", room, from: myId }));
 
-  // --- Mikrofon + Funkfilter ---
-  localStream = await navigator.mediaDevices.getUserMedia({
-    audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true }
-  });
+  // --- Mikrofon + realistische Funk-Simulation ---
+localStream = await navigator.mediaDevices.getUserMedia({
+  audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true }
+});
 
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const source = audioCtx.createMediaStreamSource(localStream);
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const source = audioCtx.createMediaStreamSource(localStream);
 
-  const filter = audioCtx.createBiquadFilter();
-  filter.type = "bandpass";
-  filter.frequency.value = 1500;
-  filter.Q.value = 0.8;
+// === Bandpass für Funkfrequenzbereich ===
+const bandpass = audioCtx.createBiquadFilter();
+bandpass.type = "bandpass";
+bandpass.frequency.value = 1500; // Mitteltonbereich für Funk
+bandpass.Q.value = 1.2;           // etwas engerer Filter für realistischen Funkklang
 
-  const noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 1, audioCtx.sampleRate);
-  const noiseData = noiseBuffer.getChannelData(0);
-  for (let i = 0; i < noiseData.length; i++) noiseData[i] = (Math.random() * 2 - 1) * 0.02;
-  const noise = audioCtx.createBufferSource();
-  noise.buffer = noiseBuffer;
-  noise.loop = true;
+// === Rauschgenerator (leichtes Funk-Rauschen) ===
+const noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
+const noiseData = noiseBuffer.getChannelData(0);
+for (let i = 0; i < noiseData.length; i++) {
+  noiseData[i] = (Math.random() * 2 - 1) * 0.02; // leises Rauschen
+}
+const noiseSource = audioCtx.createBufferSource();
+noiseSource.buffer = noiseBuffer;
+noiseSource.loop = true;
 
-  const noiseGain = audioCtx.createGain();
-  noiseGain.gain.value = 1.0;
+const noiseGain = audioCtx.createGain();
+noiseGain.gain.value = 0.3; // Rauschlevel
 
-  source.connect(filter);
-  noise.connect(noiseGain);
-  noiseGain.connect(filter);
+// === leichte Verzerrung für Funktypischen Effekt ===
+const distortion = audioCtx.createWaveShaper();
+function makeDistortionCurve(amount = 20) {
+  const k = amount, n = 44100, curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = i * 2 / n - 1;
+    curve[i] = ((3 + k) * x * 20 * Math.PI / 180) / (Math.PI + k * Math.abs(x));
+  }
+  return curve;
+}
+distortion.curve = makeDistortionCurve(15);
+distortion.oversample = '2x';
 
-  const destination = audioCtx.createMediaStreamDestination();
-  filter.connect(destination);
-  filteredStream = destination.stream;
+// === leichte AM-Modulation (simuliert Funk-Signal Schwankungen) ===
+const amGain = audioCtx.createGain();
+const lfo = audioCtx.createOscillator();
+lfo.type = 'sine';
+lfo.frequency.value = 0; // 3 Hz Schwankungen
+lfo.connect(amGain.gain);
+amGain.gain.value = 0.85;
 
-  noise.start();
+// === Aufbau Signal-Kette ===
+source.connect(bandpass);
+noiseSource.connect(noiseGain).connect(bandpass);
+bandpass.connect(distortion).connect(amGain);
 
-  console.log("🎤 Mikrofon + Funkfilter bereit.");
+// Ziel: MediaStreamDestination für WebRTC
+const destination = audioCtx.createMediaStreamDestination();
+amGain.connect(destination);
+filteredStream = destination.stream;
+
+noiseSource.start();
+lfo.start();
+
+console.log("🎤 Mikrofon + realistischer Funkfilter bereit.");
+
 }
 
 startConnection();
@@ -348,4 +377,3 @@ btnPTT.addEventListener('touchend', (e) => { e.preventDefault(); stopTalking(); 
 </script>
 </body>
 </html>
-
