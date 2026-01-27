@@ -73,6 +73,24 @@
     transform: scale(1.05);
   }
 
+  /* Fahrzeuganzeige */
+#vehicleHeader {
+  position: absolute;
+  top: 100px;
+  left: 50px;
+  width: 110px;          /* feste Breite wie Display */
+  height: 28px;          /* Höhe für saubere Zentrierung */
+  display: flex;
+  align-items: center;   /* vertikal mittig */
+  justify-content: center; /* horizontal mittig */
+  color: #000000;
+  font-family: "Courier New", monospace;
+  font-size: 16px;
+  font-weight: bold;
+  user-select: none;
+  text-align: center;
+}
+
   /* Tastenpositionen */
   #btn-action1 { bottom: 225px; left: 49px; }
   #btn-action2 { bottom: 225px; left: 88px; }
@@ -113,6 +131,7 @@
 <body>
 <div class="image-container">
   <img id="displayImage" alt="Bild">
+  <div id="vehicleHeader">FZ</div>
 
   <!-- FUNK DISPLAY -->
   <div id="displayPanel">
@@ -143,6 +162,11 @@
 const params = new URLSearchParams(window.location.search);
 const src = params.get('src');
 const img = document.getElementById('displayImage');
+const fahrzeug = params.get('fz') || 'Unbekanntes Fahrzeug';
+
+const vehicleHeader = document.getElementById('vehicleHeader');
+vehicleHeader.textContent = fahrzeug;
+
 if (src) img.src = src;
 else document.body.innerHTML = '<p style="color:white">Kein Bild angegeben.</p>';
 
@@ -157,7 +181,7 @@ function setDisplayText(text) {
 // --- WebRTC / PTT ---
 let pc, localStream, filteredStream;
 const room = "DN_ALLG";
-const myId = Math.random().toString(36).substring(2,9);
+const myId = fahrzeug;
 const ws = new WebSocket("wss://gsmr-funk.onrender.com");
 
 const talkSound = new Audio("Funken.wav");
@@ -244,7 +268,7 @@ async function startConnection() {
 
     if (msg.type === "lock_granted") {
       channelBusy = true;
-      if (deviceOn) setDisplayText("Sending...");
+      if (deviceOn) setDisplayText(msg.holder);
     }
     if (msg.type === "unlock") {
       channelBusy = false;
@@ -264,8 +288,8 @@ async function startConnection() {
 
   const filter = audioCtx.createBiquadFilter();
   filter.type = "bandpass";
-  filter.frequency.value = 3000;
-  filter.Q.value = 1;
+  filter.frequency.value = 1500;
+  filter.Q.value = 0.8;
 
   const noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 1, audioCtx.sampleRate);
   const noiseData = noiseBuffer.getChannelData(0);
